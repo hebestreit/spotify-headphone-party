@@ -1,0 +1,18 @@
+<html>
+<head>
+    <title>Spotify Party - Listen Spotify together</title>
+</head>
+
+<body>
+<div>
+
+{{if .User}}
+    Hello {{ .User.ID}}!
+    <button onclick="location.href = '/host'">Host party</button>
+{{else}}
+    <button onclick="location.href = '{{.Url}}'">Login with Spotify</button>
+{{end}}
+
+</div>
+</body>
+</html>
