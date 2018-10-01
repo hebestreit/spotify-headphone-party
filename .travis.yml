@@ -10,3 +10,13 @@ before_install:
 
 script:
 - make
+
+after_success:
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+  - export REPO=hebestreit/spotify-headphone-party
+  - export TAG=`if [ "$TRAVIS_BRANCH" == "master" ]; then echo "latest"; else echo $TRAVIS_BRANCH ; fi`
+  - docker pull $REPO || true
+  - docker build --pull --cache-from $REPO -f Dockerfile -t $REPO:$TRAVIS_COMMIT .
+  - docker tag $REPO:$TRAVIS_COMMIT $REPO:$TAG
+  - docker images
+  - docker push $REPO:$TAG
