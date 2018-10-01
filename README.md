@@ -1,4 +1,4 @@
-# Spotify Headphone Party
+# Spotify Headphone Party [![Build Status](https://travis-ci.org/hebestreit/spotify-headphone-party.svg)](https://travis-ci.org/hebestreit/spotify-headphone-party)
 
 Listen Spotify together with your friends online.
 
