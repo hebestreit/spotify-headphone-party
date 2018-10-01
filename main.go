@@ -3,7 +3,7 @@ package main
 import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/context"
-	"github.com/hebestreit/spotify-party/party"
+	"github.com/hebestreit/spotify-headphone-party/party"
 	"net/http"
 	"os"
 )
