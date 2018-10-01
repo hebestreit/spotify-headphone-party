@@ -1,0 +1,12 @@
+language: go
+
+sudo: required
+
+services:
+- docker
+
+before_install:
+- curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+
+script:
+- make

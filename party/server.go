@@ -124,7 +124,7 @@ func (server *Server) handleIndexPage(w http.ResponseWriter, r *http.Request) {
 		data.User = currentUser
 	}
 
-	t := template.Must(template.ParseFiles("template/index.html"))
+	t := template.Must(template.ParseFiles("./template/index.html"))
 	t.Execute(w, &data)
 }
 
@@ -137,15 +137,17 @@ func (server *Server) handleHostParty(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/party/%s", party.id), http.StatusFound)
 }
 
-func (server *Server) getCurrentSpotifyClient(w http.ResponseWriter, r *http.Request) (*spotify.Client) {
+func (server *Server) getCurrentSpotifyClient(w http.ResponseWriter, r *http.Request) *spotify.Client {
 	session, err := store.Get(r, sessionCookieName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return nil
 	}
 
-	if user, ok := server.activeSessions[session.Values["userId"].(string)]; ok {
-		return user.client
+	if sessionUserId, ok := session.Values["userId"]; ok {
+		if user, ok := server.activeSessions[sessionUserId.(string)]; ok {
+			return user.client
+		}
 	}
 
 	return nil
