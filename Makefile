@@ -1,6 +1,5 @@
 MAKEFLAGS += --warn-undefined-variables
-IMAGE ?= hebestreit/spotify-party
-BINARY ?= spotify-party
+BINARY ?= spotify-headphone-party
 
 .PHONY: %
 
