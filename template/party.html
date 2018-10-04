@@ -1,0 +1,45 @@
+<html>
+<head>
+    <title>Spotify Party - Listen Spotify together</title>
+</head>
+
+<body>
+<div>
+{{ if eq .Party.HostUserID .User.ID}}
+    <button onclick="deleteParty({{.Party.ID}})">Delete party</button>
+{{else}}
+    <button onclick="joinParty({{.Party.ID}})">Join party</button>
+{{end}}
+</div>
+<script>
+    // delete party item
+    function deleteParty(partyId) {
+        let xhr = new XMLHttpRequest();
+        xhr.open("DELETE", '/parties/' + partyId, true);
+        xhr.setRequestHeader('Content-type', 'application/json; charset=utf-8');
+        xhr.onload = function () {
+            if (xhr.readyState === 4 && xhr.status == "200") {
+                location.href = location.href
+                return;
+            }
+            console.error(xhr.responseText);
+        };
+        xhr.send(null);
+    }
+
+    // join party
+    function joinParty(partyId) {
+        let xhr = new XMLHttpRequest();
+        xhr.open("PUT", '/parties/' + partyId, true);
+        xhr.setRequestHeader('Content-type', 'application/json; charset=utf-8');
+        xhr.onload = function () {
+            if (xhr.readyState === 4 && xhr.status == "200") {
+                return;
+            }
+            console.error(xhr.responseText);
+        };
+        xhr.send(null);
+    }
+</script>
+</body>
+</html>

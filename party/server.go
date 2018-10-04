@@ -1,8 +1,9 @@
 package party
 
 import (
-	"fmt"
+	"encoding/json"
 	log "github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/zmb3/spotify"
 	"html/template"
@@ -10,117 +11,92 @@ import (
 	"os"
 )
 
-type User struct {
-	id     string
-	client *spotify.Client
-}
-
 type Server struct {
-	activeSessions map[string]*User
-	addUserCh      chan *User
-	removeUserCh   chan *User
-	doneCh         chan bool
+	doneCh chan bool
+	store  sessions.Store
 }
 
-func NewServer() *Server {
-	activeSessions := make(map[string]*User)
-	addUserCh := make(chan *User)
-	removeUserCh := make(chan *User)
+func NewServer(store sessions.Store) *Server {
 	doneCh := make(chan bool)
 
 	return &Server{
-		activeSessions,
-		addUserCh,
-		removeUserCh,
 		doneCh,
+		store,
 	}
 }
 
 const (
-	redirectURL       = "http://localhost:8090/callback"
 	sessionCookieName = "sessionId"
 )
 
 var (
-	auth = spotify.NewAuthenticator(redirectURL, spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState)
-
+	auth = spotify.NewAuthenticator(os.Getenv("SPOTIFY_REDIRECT_URL"), spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState)
 	// TODO maybe use session id instead
 	state = "abc123"
-	store = sessions.NewFilesystemStore("", []byte(os.Getenv("SESSION_KEY")))
 )
 
-func (server *Server) Listen() {
+func (server *Server) Listen(r *mux.Router) {
 	log.Println("Listening...")
 
-	http.HandleFunc("/", server.handleIndexPage)
-	http.HandleFunc("/callback", server.handleSpotifyAuth)
-	http.HandleFunc("/host", server.handleHostParty)
+	r.HandleFunc("/", server.handleViewIndex)
+	r.HandleFunc("/callback", server.handleSpotifyAuth)
+
+	// TODO move routing and actions to separate controllers/party.go
+	r.HandleFunc("/parties", server.handleCreateParty).Methods("POST")
+	r.HandleFunc("/parties", server.handleListParties).Methods("GET")
+	r.HandleFunc("/parties/{id}", server.handleViewParty).Methods("GET")
+	r.HandleFunc("/parties/{id}", server.handleDeleteParty).Methods("DELETE")
+	r.HandleFunc("/parties/{id}", server.handleJoinParty).Methods("PUT")
 
 	for {
 		select {
-		case user := <-server.addUserCh:
-			log.Debugf("User %s has been added.", user.id)
-			server.activeSessions[user.id] = user
-		case user := <-server.removeUserCh:
-			log.Debugf("User %s has been removed", user.id)
-			delete(server.activeSessions, user.id)
 		case <-server.doneCh:
 			return
 		}
 	}
 }
 
-func (server *Server) addUser(user *User) {
-	server.addUserCh <- user
-}
-
-func (server *Server) removeUser(user *User) {
-	server.removeUserCh <- user
-}
-
+// callback action which will be triggered after Spotify authentication
 func (server *Server) handleSpotifyAuth(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "GET":
-		session, err := store.Get(r, sessionCookieName)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		token, err := auth.Token(state, r)
-		if err != nil {
-			log.Debugf("Couldn't get token for state \"%s\"", state)
-			http.Error(w, "Couldn't get token", http.StatusNotFound)
-			return
-		}
-
-		client := auth.NewClient(token)
-		user, err := client.CurrentUser()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		session.Values["userId"] = user.ID
-		session.Save(r, w)
-
-		server.addUser(&User{user.ID, &client})
-
-		http.Redirect(w, r, "/", http.StatusFound)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	session, err := server.store.Get(r, sessionCookieName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	token, err := auth.Token(state, r)
+	if err != nil {
+		log.Debug(err)
+		http.Error(w, "Couldn't get token", http.StatusNotFound)
+		return
+	}
+
+	client := auth.NewClient(token)
+
+	privateUser, err := client.CurrentUser()
+	if err != nil {
+		panic(err)
+	}
+
+	user := CreateUser(privateUser.ID, token)
+
+	session.Values["userId"] = user.ID
+	session.Save(r, w)
+
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func (server *Server) handleIndexPage(w http.ResponseWriter, r *http.Request) {
+// index page with login button
+func (server *Server) handleViewIndex(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Url  string
 		User *spotify.PrivateUser
 	}{Url: auth.AuthURL(state)}
 
-	client := server.getCurrentSpotifyClient(w, r)
-	if client != nil {
-		currentUser, _ := client.CurrentUser()
+	user := server.getSessionUser(w, r)
+	if user != nil {
+		currentUser, _ := user.SpotifyClient().CurrentUser()
 		data.User = currentUser
 	}
 
@@ -128,26 +104,145 @@ func (server *Server) handleIndexPage(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, &data)
 }
 
-func (server *Server) handleHostParty(w http.ResponseWriter, r *http.Request) {
-	client := server.getCurrentSpotifyClient(w, r)
+// action to create and host a new party
+func (server *Server) handleCreateParty(w http.ResponseWriter, r *http.Request) {
+	user := server.getSessionUser(w, r)
 
-	party := NewParty(client)
+	party := CreateParty(user)
 	go party.Host()
 
-	http.Redirect(w, r, fmt.Sprintf("/party/%s", party.id), http.StatusFound)
+	json.NewEncoder(w).Encode(party)
 }
 
-func (server *Server) getCurrentSpotifyClient(w http.ResponseWriter, r *http.Request) *spotify.Client {
-	session, err := store.Get(r, sessionCookieName)
+// action to list all parties
+func (server *Server) handleListParties(w http.ResponseWriter, r *http.Request) {
+	// TODO return only active parties, group by HostUserID and sort by createdAt
+	parties, _ := FindAll()
+	json.NewEncoder(w).Encode(parties)
+}
+
+// action to view party
+func (server *Server) handleViewParty(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	party, err := FindParty(vars["id"])
+
+	if err != nil {
+		panic(err)
+	}
+
+	if party == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	log.Debugf("view %s", party.ID)
+
+	user := server.getSessionUser(w, r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err = user.SpotifyClient().CurrentUser(); err != nil {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	data := struct {
+		Party *Party
+		User  *User
+	}{Party: party, User: user}
+
+	t := template.Must(template.ParseFiles("./template/party.html"))
+	t.Execute(w, &data)
+}
+
+// action to join a party
+func (server *Server) handleJoinParty(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	party, err := FindParty(vars["id"])
+
+	if err != nil {
+		panic(err)
+	}
+
+	if party == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	user := server.getSessionUser(w, r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err = user.SpotifyClient().CurrentUser(); err != nil {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	if party.HostUserID == user.ID {
+		http.Error(w, "Conflict", http.StatusConflict)
+		return
+	}
+
+	go party.Join(user)
+
+	log.Debugf("join %s", party.ID)
+}
+
+// delete party
+func (server *Server) handleDeleteParty(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	party, err := FindParty(vars["id"])
+
+	if err != nil {
+		panic(err)
+	}
+
+	if party == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	user := server.getSessionUser(w, r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err = user.SpotifyClient().CurrentUser(); err != nil {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	if party.HostUserID != user.ID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	DeleteParty(party)
+}
+
+// retrieve user form current session by cookie
+func (server *Server) getSessionUser(w http.ResponseWriter, r *http.Request) *User {
+	session, err := server.store.Get(r, sessionCookieName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return nil
 	}
 
 	if sessionUserId, ok := session.Values["userId"]; ok {
-		if user, ok := server.activeSessions[sessionUserId.(string)]; ok {
-			return user.client
+		user, err := FindUser(sessionUserId.(string))
+		if err != nil {
+			return nil
 		}
+
+		return user
 	}
 
 	return nil
