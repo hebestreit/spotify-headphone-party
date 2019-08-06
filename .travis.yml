@@ -8,7 +8,7 @@ services:
 after_success:
   - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   - export REPO=hebestreit/spotify-headphone-party
-  - export TAG=`if [ "$TRAVIS_BRANCH" == "master" ]; then echo "latest"; else echo $TRAVIS_BRANCH ; fi`
+  - export TAG=`if [ "$TRAVIS_BRANCH" == "master" ]; then echo "latest"; else echo $TRAVIS_BRANCH | sed 's/\//--/g' ; fi`
   - docker pull $REPO || true
   - docker build --pull --cache-from $REPO -f Dockerfile -t $REPO:$TRAVIS_COMMIT .
   - docker tag $REPO:$TRAVIS_COMMIT $REPO:$TAG
