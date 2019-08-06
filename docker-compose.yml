@@ -1,0 +1,27 @@
+version: '3.3'
+
+services:
+  spotify-headphone-party:
+    image: hebestreit/spotify-headphone-party
+    ports:
+      - 8090:8090
+    networks:
+      - cache
+    environment:
+      REDIS_URL: redis:6379
+    env_file: docker-compose.env
+    depends_on:
+      - redis
+
+  redis:
+    image: redis
+    networks:
+      - cache
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
+
+networks:
+  cache:

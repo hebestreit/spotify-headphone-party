@@ -2,8 +2,10 @@ package main
 
 import (
 	log "github.com/Sirupsen/logrus"
-	"github.com/gorilla/context"
+	"github.com/gorilla/mux"
 	"github.com/hebestreit/spotify-headphone-party/party"
+	"github.com/hebestreit/spotify-headphone-party/redis"
+	"gopkg.in/boj/redistore.v1"
 	"net/http"
 	"os"
 )
@@ -22,8 +24,19 @@ func init() {
 }
 
 func main() {
-	server := party.NewServer()
-	go server.Listen()
+	redisPool := redis.NewPool()
+	defer redisPool.Close()
 
-	http.ListenAndServe(":8090", context.ClearHandler(http.DefaultServeMux))
+	store, err := redistore.NewRediStoreWithPool(redisPool, []byte(os.Getenv("SESSION_KEY")))
+	if err != nil {
+		panic(err)
+	}
+	defer store.Close()
+
+	r := mux.NewRouter()
+
+	server := party.NewServer(store)
+	go server.Listen(r)
+
+	http.ListenAndServe(":8090", r)
 }

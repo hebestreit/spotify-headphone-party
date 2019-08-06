@@ -7,12 +7,65 @@
 <div>
 
 {{if .User}}
-    Hello {{ .User.ID}}!
-    <button onclick="location.href = '/host'">Host party</button>
+    <p>Hello {{ .User.ID}}!</p>
+    <button onclick="createParty()">Create a new party</button>
 {{else}}
     <button onclick="location.href = '{{.Url}}'">Login with Spotify</button>
 {{end}}
-
 </div>
+
+<h3>Party Overview</h3>
+<div id="parties"></div>
+<script>
+    // initially load parties
+    listParties();
+
+    // update active parties each 5 seconds
+    setInterval(listParties, 5000);
+
+    // fetch all parties and update party list element
+    function listParties() {
+        let xhr = new XMLHttpRequest();
+        xhr.open("GET", '/parties', true);
+        xhr.setRequestHeader('Content-type', 'application/json; charset=utf-8');
+        xhr.onload = function () {
+            if (xhr.readyState === 4 && xhr.status == "200") {
+                let parties = JSON.parse(xhr.responseText);
+
+                let partiesElement = document.getElementById("parties");
+                partiesElement.innerHTML = "";
+                parties.forEach(function (party) {
+                    let partyElement = document.createElement("a");
+                    partyElement.href = "/parties/" + party.ID;
+                    partyElement.innerHTML = party.ID + " - " + party.HostUserID;
+                    partyElement.style.display = "block";
+
+                    partiesElement.appendChild(partyElement);
+                });
+
+                return;
+            }
+            console.error(xhr.responseText);
+        };
+        xhr.send(null);
+    }
+
+    // create a new party
+    function createParty() {
+        let xhr = new XMLHttpRequest();
+        xhr.open("POST", '/parties', true);
+        xhr.setRequestHeader('Content-type', 'application/json; charset=utf-8');
+        xhr.onload = function () {
+            if (xhr.readyState === 4 && xhr.status == "200") {
+                let party = JSON.parse(xhr.responseText);
+                location.href = location.href + "/parties/" + party.ID;
+                return;
+            }
+            console.error(xhr.responseText);
+        };
+        xhr.send(null);
+    }
+</script>
+
 </body>
 </html>

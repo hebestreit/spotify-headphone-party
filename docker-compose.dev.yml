@@ -1,0 +1,38 @@
+version: '3.3'
+
+services:
+  spotify-headphone-party:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - 8090:8090
+      - 2345:2345
+    security_opt:
+      - "seccomp:unconfined"
+    volumes:
+      - .:/go/src/github.com/hebestreit/spotify-headphone-party
+    networks:
+      - cache
+    environment:
+      REDIS_URL: redis:6379
+    env_file: docker-compose.env
+    cap_add:
+      - SYS_PTRACE
+    depends_on:
+      - redis
+
+  redis:
+    image: redis
+    networks:
+      - cache
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
+
+networks:
+  cache:

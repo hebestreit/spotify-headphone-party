@@ -1,0 +1,17 @@
+FROM golang:1.12-alpine AS build-env
+
+LABEL maintainer="Daniel Hebestreit"
+
+RUN apk update && apk add --no-cache libc6-compat ca-certificates git && rm -rf /var/cache/apk/*
+
+ENV CGO_ENABLED 0
+RUN go get -u github.com/golang/dep/...
+RUN go get github.com/derekparker/delve/cmd/dlv
+RUN go get github.com/oxequa/realize
+
+WORKDIR $GOPATH/src/github.com/hebestreit/spotify-headphone-party
+
+EXPOSE 8090 2345
+
+ENV CGO_ENABLED=0
+CMD realize start
